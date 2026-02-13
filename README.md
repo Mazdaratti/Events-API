@@ -136,3 +136,112 @@ The application uses SQLite by default. The database file (`events.db`) will be 
 
 **Note**: The first user registered automatically becomes an admin for demo purposes.
 
+---
+
+## Testing
+
+This project includes both unit and integration tests implemented with `pytest`.
+
+### Test Structure
+
+- `tests/test_models.py`  
+  Pure unit tests for model logic.  
+  These tests do **not** require a running server or a database connection.
+
+- `tests/test_api.py`  
+  Integration tests that perform real HTTP requests against a running API server.
+
+- `tests/conftest.py`  
+  Shared fixtures and configuration (e.g. `BASE_URL`, auth helpers, server availability check).
+
+---
+
+### Running Tests
+
+1. Start the API locally:
+
+```bash
+python app.py
+````
+
+2. In a separate terminal, run:
+
+```bash
+pytest
+```
+
+---
+
+### Integration Test Behavior
+
+Integration tests require a running Events API server.
+
+If the server is not reachable at:
+
+```
+http://localhost:5000
+```
+
+(or the configured `BASE_URL`), integration tests will be automatically skipped.
+
+Unit tests (pure model logic) will still run.
+
+Example output when the server is **not** running:
+
+```
+4 passed, 8 skipped
+```
+
+To see skip reasons:
+
+```bash
+pytest -v -rs
+```
+
+---
+
+### Environment Configuration
+
+Integration tests read `BASE_URL` from environment variables.
+
+By default, configuration is loaded from a local `.env` file:
+
+```bash
+BASE_URL=http://localhost:5000
+```
+
+The `.env` file is loaded automatically via `python-dotenv`.
+
+If no `BASE_URL` is provided, it defaults to:
+
+```
+http://localhost:5000
+```
+
+You can temporarily override the value via environment variable:
+
+```bash
+BASE_URL=http://localhost:5001 pytest
+```
+
+Environment variables take precedence over values defined in `.env`.
+
+---
+
+### Test Coverage Overview
+
+The current test suite covers:
+
+* Password hashing and validation behavior
+* Model serialization logic
+* Health endpoint
+* User registration and login
+* Authenticated event creation
+* Public RSVP behavior
+* Error cases (duplicate registration, missing auth, protected RSVP)
+
+> **Note:** Integration tests currently write into the configured database.
+> Database isolation can be introduced in a future iteration (e.g. during the Docker/CI phase).
+
+
+
