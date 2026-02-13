@@ -35,7 +35,7 @@ def _is_server_up() -> bool:
         return False
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def require_running_server():
     """
     If the API server is not running, integration tests will be skipped.

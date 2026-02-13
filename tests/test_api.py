@@ -9,8 +9,12 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+import pytest
+
+
 from tests.conftest import BASE_URL, register_user, login_user, create_event
 
+pytestmark = pytest.mark.usefixtures("require_running_server")
 
 # -------------------------
 # Happy path tests
