@@ -647,7 +647,8 @@ components:
       properties:
         attending:
           type: boolean
-          description: Whether the user is attending (default: true)
+          description: 
+            Whether the user is attending 
           default: true
           example: true
 
