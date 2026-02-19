@@ -243,5 +243,79 @@ The current test suite covers:
 > **Note:** Integration tests currently write into the configured database.
 > Database isolation can be introduced in a future iteration (e.g. during the Docker/CI phase).
 
+---
+
+## Docker
+
+The Events API can be run inside a Docker container for a fully reproducible runtime environment.
+
+### Build the Docker Image
+
+From the project root:
+
+```bash
+docker build -t my_events_api .
+```
+
+This builds a container image using:
+
+* `python:3.11-slim` as base image
+* Layer caching for dependency installation
+* Optimized image size via `.dockerignore`
+
+---
+
+### Run the Container
+
+```bash
+docker run -p 5000:5000 --name events-api-container my_events_api
+```
+
+The API will be available at:
+
+```
+http://localhost:5000
+```
+
+Health check:
+
+```bash
+curl http://localhost:5000/api/health
+```
+
+Expected response:
+
+```json
+{"status":"healthy"}
+```
+
+---
+
+### Stopping and Removing the Container
+
+```bash
+docker stop events-api-container
+docker rm events-api-container
+```
+
+---
+
+### Running Tests Against the Container
+
+1. Start the container.
+2. In a separate terminal, run:
+
+```bash
+pytest -v
+```
+
+Unit tests run locally.
+Integration tests perform real HTTP requests against the containerized API.
+
+All tests must pass while the API is running inside Docker.
+
+---
+
+
 
 
