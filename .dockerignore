@@ -1,0 +1,59 @@
+# Python
+**/__pycache__
+**/.venv
+**/.coverage
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.tox
+**/htmlcov
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite*
+*.log
+*.pot
+
+# Environment and secrets
+**/.env
+**/secrets.dev.yaml
+**/values.dev.yaml
+
+# Version control
+**/.git
+**/.gitignore
+
+# IDE
+**/.classpath
+**/.project
+**/.settings
+**/.toolstarget
+**/.vs
+**/.vscode
+
+# Project files
+**/*.*proj.user
+**/*.dbmdl
+**/*.jfm
+**/bin
+**/obj
+**/charts
+
+# Docker
+**/.dockerignore
+**/docker-compose*
+**/compose*
+**/Dockerfile*
+
+# Dependencies
+**/node_modules
+**/npm-debug.log
+
+# Testing
+**/tests/
+**/htmlcov/
+
+# Documentation
+LICENSE
+README.md
