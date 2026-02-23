@@ -1,12 +1,23 @@
+# ------------------------------------------------------------
+# Release Workflow
+# ------------------------------------------------------------
+# Purpose:
+# This workflow publishes a Docker image to Docker Hub.
+#
+# It is intentionally triggered ONLY when a semantic version
+# tag is pushed (for example: v1.0.0).
+#
+# Why tags only?
+# - Keeps releases explicit and intentional
+# - Avoids publishing images on every merge
+# - Makes deployments deterministic (deploy vX.Y.Z)
+# - Matches course expectations for Docker Hub publishing
+# ------------------------------------------------------------
+
 name: Release
 
 on:
-  # Publish images from main ONLY after CI succeeded.
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-
-  # Publish versioned images when you push a tag like v1.0.0
+  # Trigger only when pushing a version tag like v1.0.0
   push:
     tags:
       - "v*.*.*"
@@ -15,71 +26,64 @@ permissions:
   contents: read
 
 concurrency:
-  # Prevent overlapping publishes for the same ref.
+  # Prevents multiple release runs for the same tag.
+  # If someone re-pushes or retriggers quickly,
+  # GitHub cancels the older run.
   group: release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  publish_main:
-    name: Publish main (latest + sha)
-    runs-on: ubuntu-latest
-
-    # Only run when:
-    # - triggered by workflow_run
-    # - CI concluded successfully
-    # - the CI run was for main branch
-    if: >
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main'
-
-    steps:
-      # Checkout the exact commit that CI tested.
-      - name: Checkout exact commit tested by CI
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # Tags:
-      # - latest: convenience tag for current main
-      # - sha-<full_sha>: deterministic tag for deployments/rollbacks
-      - name: Build and push (main)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/events-api:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/events-api:sha-${{ github.event.workflow_run.head_sha }}
-
   publish_version:
-    name: Publish version tag (vX.Y.Z)
+    name: Publish Docker image (version tag)
     runs-on: ubuntu-latest
 
-    # This job runs only on tag pushes.
-    if: github.event_name == 'push'
-
     steps:
+      # --------------------------------------------------------
+      # Checkout the exact commit that the tag points to.
+      # This guarantees that the Docker image is built from
+      # the tagged source code, not from some other branch.
+      # --------------------------------------------------------
       - name: Checkout tagged commit
         uses: actions/checkout@v4
 
+      # --------------------------------------------------------
+      # Authenticate to Docker Hub using repository secrets.
+      #
+      # Required GitHub secrets:
+      # - DOCKERHUB_USERNAME
+      # - DOCKERHUB_TOKEN (Personal Access Token with write access)
+      #
+      # These secrets must be configured in:
+      # GitHub → Settings → Secrets and variables → Actions
+      # --------------------------------------------------------
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # github.ref_name will be like "v1.0.0"
-      - name: Build and push (version)
+      # --------------------------------------------------------
+      # Build and push the Docker image.
+      #
+      # We publish two tags:
+      #
+      # 1) vX.Y.Z
+      #    → Immutable, deterministic release tag.
+      #      This is what should be used in deployments.
+      #
+      # 2) latest
+      #    → Convenience tag pointing to the most recent
+      #      released version.
+      #
+      # This ensures:
+      # - Stable versioned deployments
+      # - Easy local testing via :latest
+      # --------------------------------------------------------
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/events-api:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/events-api:latest
