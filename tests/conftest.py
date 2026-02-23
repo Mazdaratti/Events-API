@@ -38,13 +38,16 @@ def _is_server_up() -> bool:
 @pytest.fixture(scope="session")
 def require_running_server():
     """
-    If the API server is not running, integration tests will be skipped.
-    Unit tests (pure logic) will still run.
+    Integration tests require a running API server.
+
+    - In CI we must not "pass" by skipping integration tests.
+    - Failing here guarantees that a missing/unhealthy server breaks the build.
+    - Unit tests remain independent because they do not use this fixture.
     """
     if not _is_server_up():
-        pytest.skip(
+        pytest.fail(
             f"Events API not reachable at {BASE_URL}. "
-            f"Start the server (python app.py) and re-run pytest."
+            "Start the server (python app.py) or run the Docker container and re-run pytest."
         )
 
 
