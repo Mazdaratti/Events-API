@@ -1,3 +1,14 @@
+# This is a template workflow.
+# To activate it:
+# 1. Rename this file to: ci_2_job.yml
+# 2. Commit and push
+#
+# This workflow demonstrates a two-job production-style CI split:
+# - Job 1: Unit tests
+# - Job 2: Docker build + integration tests
+#
+# It is intentionally NOT active while saved as .template.
+
 name: CI
 
 on:
@@ -60,21 +71,21 @@ jobs:
         run: |
           docker build -t events-api-ci:${{ github.sha }} .
 
-      #- name: Scan Docker image for vulnerabilities
-      #  uses: aquasecurity/trivy-action@0.30.0  # Pinned to specific version
-      #  with:
-      #    image-ref: events-api-ci:${{ github.sha }}
-      #    format: 'sarif'
-      #    output: 'trivy-results.sarif'
-      #    severity: 'CRITICAL,HIGH'
-      #    exit-code: '1'  # Fail on critical/high vulnerabilities
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.30.0  # Pinned to specific version
+        with:
+          image-ref: events-api-ci:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'  # Fail on critical/high vulnerabilities
 
-      #- name: Upload Trivy scan results
-      #  if: always()
-      #  uses: actions/upload-artifact@v4
-      #  with:
-      #    name: trivy-security-scan
-      #    path: trivy-results.sarif
+      - name: Upload Trivy scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-security-scan
+          path: trivy-results.sarif
 
       # Run the container in the background. Publish port 5000 so tests can call it.
       - name: Run container
