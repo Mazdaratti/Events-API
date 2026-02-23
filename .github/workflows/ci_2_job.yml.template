@@ -13,7 +13,15 @@ name: CI
 
 on:
   push:
+    tags-ignore:
+      - "v*.*.*"
+    paths-ignore:
+      - "README.md"
+      - "**/*.md"
   pull_request:
+    paths-ignore:
+      - "README.md"
+      - "**/*.md"
 
 permissions:
   contents: read
