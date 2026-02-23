@@ -311,7 +311,7 @@ All tests must pass while the API is running inside Docker.
 
 ---
 
-# Continuous Integration (GitHub Actions)
+## Continuous Integration (GitHub Actions)
 
 CI runs automatically on:
 
@@ -320,7 +320,7 @@ CI runs automatically on:
 
 Markdown-only changes do NOT trigger CI.
 
-## CI Pipeline Steps
+### CI Pipeline Steps
 
 1. Install dependencies
 2. Run unit tests
@@ -341,7 +341,65 @@ CI must pass before merging to `main`.
 
 ---
 
-# Docker Hub Release Policy
+### Optional: Two-Job CI Workflow Template
+
+This repository includes a production-style two-job CI workflow template:
+
+```
+.github/workflows/ci_2_job.yml.template
+```
+
+This template separates:
+
+- **Job 1: Unit tests**
+  - Runs `tests/test_models.py`
+  - Uploads JUnit test results as artifacts
+
+- **Job 2: Docker build + integration tests**
+  - Builds the Docker image
+  - Runs the container and waits for `/api/health`
+  - Runs `tests/test_api.py`
+  - Uploads JUnit test results as artifacts
+  - Includes a Trivy vulnerability scan step (currently may be enabled later during hardening)
+
+It is stored as `.template` so it does not run automatically.
+
+---
+
+#### ⚠ Important: Only One CI Workflow Should Be Active
+
+At any time, **only one workflow named `CI` must be active**.
+
+If you want to activate the two-job workflow:
+
+1. Disable the current single-job workflow:
+   ```bash
+   mv .github/workflows/ci.yml .github/workflows/ci.yml.template
+   ```
+
+2. Activate the two-job workflow:
+   ```bash
+   mv .github/workflows/ci_2_job.yml.template .github/workflows/ci_2_job.yml
+   ```
+
+3. Commit and push:
+   ```bash
+   git add .github/workflows/
+   git commit -m "ci: switch to two-job workflow"
+   git push
+   ```
+
+If both workflows are active simultaneously:
+
+- CI will run twice
+- Release triggers may behave unexpectedly
+- Debugging becomes confusing
+
+To revert back to the single-job workflow, reverse the renaming steps.
+
+---
+
+## Docker Hub Release Policy
 
 Docker images are published **only when a version tag is pushed**.
 
@@ -352,7 +410,7 @@ git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 ```
 
-## What Happens on Tag Push
+### What Happens on Tag Push
 
 Release workflow:
 
@@ -373,7 +431,7 @@ This ensures:
 
 ---
 
-# Docker Hub Image
+### Docker Hub Image
 
 Repository:
 
@@ -395,7 +453,7 @@ docker pull <your-dockerhub-username>/events-api:latest
 
 ---
 
-# GitHub Secrets Required
+### GitHub Secrets Required
 
 To enable Docker publishing, configure in:
 
@@ -408,7 +466,7 @@ Required secrets:
 
 ---
 
-# Deployment
+## Deployment
 
 This project is designed to:
 
