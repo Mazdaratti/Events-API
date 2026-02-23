@@ -182,20 +182,15 @@ If the server is not reachable at:
 http://localhost:5000
 ```
 
-(or the configured `BASE_URL`), integration tests will be automatically skipped.
+(or the configured `BASE_URL`), integration tests **FAIL**.
+This prevents false-positive test passes and ensures CI reliability.
 
-Unit tests (pure model logic) will still run.
+Unit tests still execute independently, but the overall test run will fail.
 
 Example output when the server is **not** running:
 
 ```
-4 passed, 8 skipped
-```
-
-To see skip reasons:
-
-```bash
-pytest -v -rs
+Failed: Events API not reachable at http://localhost:5000.
 ```
 
 ---
@@ -316,5 +311,109 @@ All tests must pass while the API is running inside Docker.
 
 ---
 
-Test:ci: ignore markdown-only changes
+# Continuous Integration (GitHub Actions)
 
+CI runs automatically on:
+
+- Push
+- Pull Request
+
+Markdown-only changes do NOT trigger CI.
+
+## CI Pipeline Steps
+
+1. Install dependencies
+2. Run unit tests
+3. Build Docker image
+4. Start container
+5. Wait for health endpoint
+6. Run integration tests
+7. Clean up container
+
+This guarantees:
+
+- Tests pass
+- Docker image builds correctly
+- Container starts successfully
+- API responds correctly
+
+CI must pass before merging to `main`.
+
+---
+
+# Docker Hub Release Policy
+
+Docker images are published **only when a version tag is pushed**.
+
+Example version tag:
+
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+## What Happens on Tag Push
+
+Release workflow:
+
+1. Checks out tagged commit
+2. Builds Docker image
+3. Pushes image to Docker Hub
+
+Published tags:
+
+- `vX.Y.Z` (deterministic release tag)
+- `latest` (points to latest released version)
+
+This ensures:
+
+- Reproducible deployments
+- Clear release history
+- Explicit version control
+
+---
+
+# Docker Hub Image
+
+Repository:
+
+```
+https://hub.docker.com/r/<your-dockerhub-username>/events-api
+```
+
+Pull specific version:
+
+```bash
+docker pull <your-dockerhub-username>/events-api:v1.0.0
+```
+
+Pull latest release:
+
+```bash
+docker pull <your-dockerhub-username>/events-api:latest
+```
+
+---
+
+# GitHub Secrets Required
+
+To enable Docker publishing, configure in:
+
+GitHub → Repository → Settings → Secrets and variables → Actions
+
+Required secrets:
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN` (Docker Hub Personal Access Token with write permissions)
+
+---
+
+# Deployment
+
+This project is designed to:
+
+- Build via GitHub Actions
+- Publish Docker images to Docker Hub
+- Deploy container to Render
+
+Deployment pulls a specific version tag (`vX.Y.Z`) for deterministic runtime.
