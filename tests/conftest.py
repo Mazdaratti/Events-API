@@ -6,8 +6,9 @@ These tests:
 - Load configuration from environment variables
 - Support local .env file for development
 
-To keep the developer experience smooth, we skip integration tests
-if the server is not reachable.
+Important:
+Integration tests FAIL if the server is not reachable.
+This prevents CI from passing by skipping integration tests.
 """
 
 import os
