@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  # Publish images from main ONLY after CI succeeded.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+  # Publish versioned images when you push a tag like v1.0.0
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Prevent overlapping publishes for the same ref.
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish_main:
+    name: Publish main (latest + sha)
+    runs-on: ubuntu-latest
+
+    # Only run when:
+    # - triggered by workflow_run
+    # - CI concluded successfully
+    # - the CI run was for main branch
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+
+    steps:
+      # Checkout the exact commit that CI tested.
+      - name: Checkout exact commit tested by CI
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Tags:
+      # - latest: convenience tag for current main
+      # - sha-<full_sha>: deterministic tag for deployments/rollbacks
+      - name: Build and push (main)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/events-api:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/events-api:sha-${{ github.event.workflow_run.head_sha }}
+
+  publish_version:
+    name: Publish version tag (vX.Y.Z)
+    runs-on: ubuntu-latest
+
+    # This job runs only on tag pushes.
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # github.ref_name will be like "v1.0.0"
+      - name: Build and push (version)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/events-api:${{ github.ref_name }}
