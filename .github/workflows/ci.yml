@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    paths-ignore:
+      - "README.md"
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "README.md"
+      - "**/*.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Cancel older runs for the same branch/PR to reduce noise and save minutes.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Unit + Docker + Integration
+    runs-on: ubuntu-latest
+    env:
+      # tests/conftest.py uses BASE_URL for integration tests.
+      BASE_URL: http://localhost:5000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          # Built-in pip cache to speed up installs.
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Unit tests do not require the server/container.
+      # Running them first gives fast feedback before we spend time building Docker.
+      - name: Run unit tests
+        run: |
+          pytest -q tests/test_models.py
+
+      # Build the artifact we ship: the Docker image.
+      - name: Build Docker image
+        run: |
+          docker build -t events-api-ci:${{ github.sha }} .
+
+      # Run the container in the background so integration tests can hit it over HTTP.
+      - name: Run container
+        run: |
+          docker run -d --name events-api-ci -p 5000:5000 events-api-ci:${{ github.sha }}
+
+      # Wait for the API to be ready. This reduces flaky "connection refused" errors.
+      - name: Wait for health endpoint
+        run: |
+          set -e
+          for i in {1..30}; do
+            if curl -fsS http://localhost:5000/api/health > /dev/null; then
+              echo "✅ API is healthy"
+              exit 0
+            fi
+            echo "Waiting for API... ($i/30)"
+            sleep 2
+          done
+          echo "❌ API did not become healthy in time"
+          docker logs events-api-ci || true
+          exit 1
+
+      # Integration tests run from the runner against the running container.
+      # This keeps the image lean (no tests copied into the image).
+      - name: Run integration tests
+        run: |
+          pytest -q tests/test_api.py
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          echo "=== Container logs ==="
+          docker logs events-api-ci || true
+          echo "=== Container status ==="
+          docker ps -a | grep events-api-ci || true
+
+      # Always clean up. Even if tests fail, the runner should not keep the container around.
+      - name: Stop and remove container
+        if: always()
+        run: |
+          docker rm -f events-api-ci || true

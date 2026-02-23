@@ -1,0 +1,153 @@
+# This is a template workflow.
+# To activate it:
+# 1. Rename this file to: ci_2_job.yml
+# 2. Commit and push
+#
+# This workflow demonstrates a two-job production-style CI split:
+# - Job 1: Unit tests
+# - Job 2: Docker build + integration tests
+#
+# It is intentionally NOT active while saved as .template.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Cancels older runs on the same branch/PR to save time and keep signal clean.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit_tests:
+    name: Unit tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          # Speeds up CI by caching pip downloads between runs.
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # We run unit tests first to fail fast and keep feedback tight.
+      - name: Run unit tests with JUnit output
+        run: |
+          pytest -q tests/test_models.py --junitxml=unit-test-results.xml
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: unit-test-results.xml
+
+  docker_integration:
+    name: Docker build + integration tests
+    runs-on: ubuntu-latest
+    needs: unit_tests
+    env:
+      # tests/conftest.py reads BASE_URL. We point it to the container published port.
+      BASE_URL: http://localhost:5000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # This validates the Dockerfile in CI (your "ship artifact" must always build).
+      - name: Build Docker image
+        run: |
+          docker build -t events-api-ci:${{ github.sha }} .
+
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.30.0  # Pinned to specific version
+        with:
+          image-ref: events-api-ci:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'  # Fail on critical/high vulnerabilities
+
+      - name: Upload Trivy scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-security-scan
+          path: trivy-results.sarif
+
+      # Run the container in the background. Publish port 5000 so tests can call it.
+      - name: Run container
+        run: |
+          docker run -d --name events-api-ci -p 5000:5000 events-api-ci:${{ github.sha }}
+
+      # Single source of truth for health checks
+      - name: Wait for health endpoint
+        id: health-check
+        run: |
+          set -e
+          for i in {1..30}; do
+            if curl -fsS http://localhost:5000/api/health > /dev/null; then
+              echo "healthy=true" >> $GITHUB_OUTPUT
+              echo "API is healthy"
+              exit 0
+            fi
+            echo "Waiting for API... ($i/30)"
+            sleep 2
+          done
+          echo "healthy=false" >> $GITHUB_OUTPUT
+          echo "API did not become healthy in time"
+          docker logs events-api-ci || true
+          exit 1
+
+      # We run pytest from the runner (not inside the image).
+      # This keeps the image lean and avoids copying tests into the container.
+      - name: Set up Python 3.11 (for pytest client)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"  # Single source of pip caching
+
+      - name: Install dependencies (for pytest client)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Integration tests hit the running container via HTTP.
+      - name: Run integration tests with JUnit output
+        id: integration-tests
+        run: |
+          pytest -q tests/test_api.py --junitxml=integration-test-results.xml
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: integration-test-results.xml
+
+      # If tests fail, show container logs (helps debugging).
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          echo "=== Container logs ==="
+          docker logs events-api-ci || true
+          echo "=== Container status ==="
+          docker ps -a | grep events-api-ci || true
+
+      # Always clean up container even if earlier steps failed.
+      - name: Stop and remove container
+        if: always()
+        run: |
+          docker rm -f events-api-ci || true
