@@ -2,12 +2,17 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
+      - feat/*
     tags-ignore:
       - "v*.*.*"
     paths-ignore:
       - "README.md"
       - "**/*.md"
   pull_request:
+    branches:
+      - main
     paths-ignore:
       - "README.md"
       - "**/*.md"

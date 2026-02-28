@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# Continuous Deployment Workflow
+# ------------------------------------------------------------
+# Purpose:
+# This workflow publishes the Docker image tagged as `latest`
+# whenever code is pushed to the main branch.
+#
+# Why only main?
+# - main represents the deployable state of the application.
+# - Every merge to main should be production-ready.
+#
+# Why `latest`?
+# - `latest` represents the current deployment channel.
+# - Render will track this tag for automatic deployments.
+#
+# Separation of responsibilities:
+# - CI workflow → builds & tests
+# - CD workflow → publishes deployable image
+# - Release workflow → publishes immutable version tags (vX.Y.Z)
+# ------------------------------------------------------------
+
+name: CD
+
+on:
+  # Trigger continuous deployment only when main is updated.
+  push:
+    branches:
+      - main
+    # Ignore documentation-only changes.
+    paths-ignore:
+      - "README.md"
+      - "**/*.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Prevent multiple CD runs for the same ref.
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish_latest:
+    name: Publish Docker image (latest)
+    runs-on: ubuntu-latest
+
+    steps:
+      # --------------------------------------------------------
+      # Checkout the exact commit pushed to main.
+      # --------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------------
+      # Authenticate to Docker Hub.
+      #
+      # Required repository secrets:
+      # - DOCKERHUB_USERNAME
+      # - DOCKERHUB_TOKEN
+      # --------------------------------------------------------
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # --------------------------------------------------------
+      # Build and push the image tagged as `latest`.
+      #
+      # `latest` is the deployment channel consumed by Render.
+      # --------------------------------------------------------
+      - name: Build and push image (latest)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/events-api:latest
