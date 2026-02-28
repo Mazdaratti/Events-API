@@ -86,3 +86,23 @@ jobs:
       - name: Trigger Render deploy
         run: |
           curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+
+      # --------------------------------------------------------
+      # Smoke test the live deployment.
+      #
+      # Secret:
+      # - RENDER_HEALTHCHECK_URL (full /api/health URL)
+      # --------------------------------------------------------
+      - name: Smoke test (Render /api/health)
+        run: |
+          set -e
+          for i in {1..30}; do
+            if curl -fsS "${{ secrets.RENDER_HEALTHCHECK_URL }}" > /dev/null; then
+              echo "✅ Smoke test passed"
+              exit 0
+            fi
+            echo "Waiting for Render deploy... ($i/30)"
+            sleep 5
+          done
+          echo "❌ Smoke test failed"
+          exit 1
