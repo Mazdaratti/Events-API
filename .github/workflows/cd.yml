@@ -76,3 +76,13 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/events-api:latest
+    
+      # --------------------------------------------------------
+      # Trigger a Render redeploy after publishing :latest.
+      #
+      # Secret:
+      # - RENDER_DEPLOY_HOOK (Render deploy hook URL)
+      # --------------------------------------------------------
+      - name: Trigger Render deploy
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
