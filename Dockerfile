@@ -21,6 +21,6 @@ COPY . .
 EXPOSE 5000
 
 # Run the application
-CMD ["python", "app.py"]
+CMD ["sh", "-c", "gunicorn -w ${WEB_CONCURRENCY:-1} -b 0.0.0.0:${PORT:-5000} 'app:app'"]
 
 
