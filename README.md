@@ -130,64 +130,73 @@ This is a basic implementation designed for educational purposes. The following 
 - CORS configuration
 - Error handling and information disclosure
 
+
 ## Database
 
-The application uses SQLite by default. The database file (`events.db`) will be created automatically on first run.
+### Local (default)
 
-**Note**: The first user registered automatically becomes an admin for demo purposes.
+Locally, the application uses SQLite by default.
+
+A database file (`events.db`) is created automatically on first run.
+
+### Render (production)
+
+On Render, the application uses PostgreSQL via the `DATABASE_URL` environment variable.
+
+This provides persistence across redeploys and container restarts.
+
+**Note:** For demo purposes, the first user registered becomes an admin.
 
 ---
 
 ## Testing
 
-This project includes both unit and integration tests implemented with `pytest`.
+This project includes both unit and integration tests using `pytest`.
 
 ### Test Structure
 
-- `tests/test_models.py`  
-  Pure unit tests for model logic.  
-  These tests do **not** require a running server or a database connection.
+* `tests/test_models.py`
+  Unit tests for model logic (no HTTP calls)
 
-- `tests/test_api.py`  
-  Integration tests that perform real HTTP requests against a running API server.
+* `tests/test_api.py`
+  Integration tests that perform real HTTP requests against a running API server
 
-- `tests/conftest.py`  
-  Shared fixtures and configuration (e.g. `BASE_URL`, auth helpers, server availability check).
+* `tests/conftest.py`
+  Shared fixtures and configuration (e.g. `BASE_URL`, auth helpers, server availability check)
 
 ---
 
-### Running Tests
+### Running Tests (Local)
 
 1. Start the API locally:
 
 ```bash
 python app.py
-````
+```
 
-2. In a separate terminal, run:
+2. In a separate terminal:
 
 ```bash
-pytest
+pytest -v
 ```
 
 ---
 
-### Integration Test Behavior
+### Integration Test Behavior (important)
 
 Integration tests require a running Events API server.
 
-If the server is not reachable at:
+They run against:
 
-```
-http://localhost:5000
-```
+* `BASE_URL` environment variable if set
+* otherwise default: `http://localhost:5000`
 
-(or the configured `BASE_URL`), integration tests **FAIL**.
-This prevents false-positive test passes and ensures CI reliability.
+If the server is not reachable at the configured `BASE_URL`,
+integration tests **FAIL** (they are not skipped).
 
-Unit tests still execute independently, but the overall test run will fail.
+This prevents false-positive test runs and ensures CI reliability.
 
-Example output when the server is **not** running:
+Example failure when API is not running:
 
 ```
 Failed: Events API not reachable at http://localhost:5000.
@@ -195,39 +204,29 @@ Failed: Events API not reachable at http://localhost:5000.
 
 ---
 
-### Environment Configuration
+### Environment Configuration (tests)
 
-Integration tests read `BASE_URL` from environment variables.
+You can override the test target:
 
-By default, configuration is loaded from a local `.env` file:
+**Windows PowerShell**
+
+```powershell
+$env:BASE_URL="http://localhost:5001"; pytest -v
+```
+
+**Linux/Mac**
 
 ```bash
-BASE_URL=http://localhost:5000
+BASE_URL=http://localhost:5001 pytest -v
 ```
-
-The `.env` file is loaded automatically via `python-dotenv`.
-
-If no `BASE_URL` is provided, it defaults to:
-
-```
-http://localhost:5000
-```
-
-You can temporarily override the value via environment variable:
-
-```bash
-BASE_URL=http://localhost:5001 pytest
-```
-
-Environment variables take precedence over values defined in `.env`.
 
 ---
 
 ### Test Coverage Overview
 
-The current test suite covers:
+Current tests cover:
 
-* Password hashing and validation behavior
+* Password hashing and validation
 * Model serialization logic
 * Health endpoint
 * User registration and login
@@ -235,42 +234,28 @@ The current test suite covers:
 * Public RSVP behavior
 * Error cases (duplicate registration, missing auth, protected RSVP)
 
-> **Note:** Integration tests currently write into the configured database.
-> Database isolation can be introduced in a future iteration (e.g. during the Docker/CI phase).
-
 ---
 
 ## Docker
 
-The Events API can be run inside a Docker container for a fully reproducible runtime environment.
+The Events API can be run in a container for a reproducible runtime environment.
 
-### Build the Docker Image
-
-From the project root:
+### Build the Docker image
 
 ```bash
-docker build -t my_events_api .
+docker build -t events-api:local .
 ```
 
-This builds a container image using:
+### Run the container (local port 5000)
 
-* `python:3.11-slim` as base image
-* Layer caching for dependency installation
-* Optimized image size via `.dockerignore`
-
----
-
-### Run the Container
+The container runs the API using **Gunicorn** (production server), not Flask dev server.
 
 ```bash
-docker run -p 5000:5000 --name events-api-container my_events_api
+docker run --rm -p 5000:5000 -e PORT=5000 --name events-api events-api:local
 ```
 
-The API will be available at:
-
-```
-http://localhost:5000
-```
+API available at:
+`http://localhost:5000`
 
 Health check:
 
@@ -278,7 +263,7 @@ Health check:
 curl http://localhost:5000/api/health
 ```
 
-Expected response:
+Expected:
 
 ```json
 {"status":"healthy"}
@@ -286,192 +271,197 @@ Expected response:
 
 ---
 
-### Stopping and Removing the Container
+### Production runtime details (Gunicorn + wsgi.py)
 
-```bash
-docker stop events-api-container
-docker rm events-api-container
-```
+Gunicorn needs an importable WSGI entrypoint in the form `module:app`.
+
+This project provides `wsgi.py` as that entrypoint.
+
+The container command follows the Render pattern:
+
+* bind to `0.0.0.0:$PORT`
+* optionally use `WEB_CONCURRENCY` when available
 
 ---
 
-### Running Tests Against the Container
+### Run tests against the container
 
-1. Start the container.
-2. In a separate terminal, run:
+1. Start the container
+2. Run tests from the host:
 
 ```bash
 pytest -v
 ```
 
 Unit tests run locally.
-Integration tests perform real HTTP requests against the containerized API.
 
-All tests must pass while the API is running inside Docker.
+Integration tests send HTTP requests to the containerized API using `BASE_URL`
+(default `http://localhost:5000`).
 
 ---
 
 ## Continuous Integration (GitHub Actions)
 
-CI runs automatically on:
+CI is designed to validate every change before it reaches `main`.
 
-- Push
-- Pull Request
+CI runs on:
 
-Markdown-only changes do NOT trigger CI.
+* pushes to feature branches (e.g. `feat/*`)
+* pull requests targeting `main`
+
+Documentation-only changes (`README.md`, `*.md`) do not trigger CI.
 
 ### CI Pipeline Steps
 
 1. Install dependencies
-2. Run unit tests
+2. Run unit tests (`tests/test_models.py`)
 3. Build Docker image
-4. Start container
-5. Wait for health endpoint
-6. Run integration tests
-7. Clean up container
+4. Run container
+5. Wait for `/api/health`
+6. Run integration tests (`tests/test_api.py`) against the container
+7. Always stop + remove the container
 
 This guarantees:
 
-- Tests pass
-- Docker image builds correctly
-- Container starts successfully
-- API responds correctly
-
-CI must pass before merging to `main`.
+* tests pass
+* Docker image builds
+* container boots
+* API is reachable via HTTP
 
 ---
 
 ### Optional: Two-Job CI Workflow Template
 
-This repository includes a production-style two-job CI workflow template:
+This repository includes an optional two-job CI template:
 
 ```
 .github/workflows/ci_2_job.yml.template
 ```
 
-This template separates:
-
-- **Job 1: Unit tests**
-  - Runs `tests/test_models.py`
-  - Uploads JUnit test results as artifacts
-
-- **Job 2: Docker build + integration tests**
-  - Builds the Docker image
-  - Runs the container and waits for `/api/health`
-  - Runs `tests/test_api.py`
-  - Uploads JUnit test results as artifacts
-  - Includes a Trivy vulnerability scan step (currently may be enabled later during hardening)
-
 It is stored as `.template` so it does not run automatically.
 
 ---
 
-#### ⚠ Important: Only One CI Workflow Should Be Active
+## Docker Hub Publishing
 
-At any time, **only one workflow named `CI` must be active**.
+### GitHub secrets required (Docker Hub)
 
-If you want to activate the two-job workflow:
+Configure in:
 
-1. Disable the current single-job workflow:
-   ```bash
-   mv .github/workflows/ci.yml .github/workflows/ci.yml.template
-   ```
+GitHub → Settings → Secrets and variables → Actions
 
-2. Activate the two-job workflow:
-   ```bash
-   mv .github/workflows/ci_2_job.yml.template .github/workflows/ci_2_job.yml
-   ```
+Required:
 
-3. Commit and push:
-   ```bash
-   git add .github/workflows/
-   git commit -m "ci: switch to two-job workflow"
-   git push
-   ```
-
-If both workflows are active simultaneously:
-
-- CI will run twice
-- Release triggers may behave unexpectedly
-- Debugging becomes confusing
-
-To revert back to the single-job workflow, reverse the renaming steps.
+* `DOCKERHUB_USERNAME`
+* `DOCKERHUB_TOKEN` (Docker Hub PAT with write access)
 
 ---
 
-## Docker Hub Release Policy
+## Release Workflow (version tags)
 
-Docker images are published **only when a version tag is pushed**.
-
-Example version tag:
+Immutable Docker images are published only when a semantic version tag is pushed:
 
 ```bash
-git tag -a v1.0.0 -m "Release v1.0.0"
-git push origin v1.0.0
+git tag -a v1.1.0 -m "Release v1.1.0"
+git push origin v1.1.0
 ```
 
-### What Happens on Tag Push
+Release workflow publishes:
 
-Release workflow:
+* `<user>/events-api:vX.Y.Z`
 
-1. Checks out tagged commit
-2. Builds Docker image
-3. Pushes image to Docker Hub
+Important:
 
-Published tags:
+* The Release workflow does not publish latest.
 
-- `vX.Y.Z` (deterministic release tag)
-- `latest` (points to latest released version)
+* The latest tag is owned by the CD workflow and always represents the current      deployable state of main.
 
-This ensures:
+* This avoids collisions and keeps deployments deterministic.
 
-- Reproducible deployments
-- Clear release history
-- Explicit version control
+* Use version tags for deterministic runtime.
 
 ---
 
-### Docker Hub Image
+## Continuous Deployment (Render)
 
-Repository:
+Deployment is automated to Render using the Docker Hub `latest` image.
 
-```
-https://hub.docker.com/r/<your-dockerhub-username>/events-api
-```
+CD flow:
 
-Pull specific version:
+1. merge to `main`
+2. CD workflow builds and pushes `<user>/events-api:latest`
+3. CD triggers a Render deploy hook
+4. Render pulls the new `latest`
+5. CD smoke test verifies:
 
-```bash
-docker pull <your-dockerhub-username>/events-api:v1.0.0
-```
+   * `/api/health`
+   * `/api/events`
 
-Pull latest release:
+### GitHub secrets required (Render CD)
 
-```bash
-docker pull <your-dockerhub-username>/events-api:latest
-```
+Add these in GitHub Actions secrets:
 
----
-
-### GitHub Secrets Required
-
-To enable Docker publishing, configure in:
-
-GitHub → Repository → Settings → Secrets and variables → Actions
-
-Required secrets:
-
-- `DOCKERHUB_USERNAME`
-- `DOCKERHUB_TOKEN` (Docker Hub Personal Access Token with write permissions)
+* `RENDER_DEPLOY_HOOK` (Render deploy hook URL)
+* `RENDER_BASE_URL` (e.g. `https://events-api-latest.onrender.com`)
 
 ---
 
-## Deployment
+## Render Setup Steps (what was done)
 
-This project is designed to:
+### 1) Create a Render Project
 
-- Build via GitHub Actions
-- Publish Docker images to Docker Hub
-- Deploy container to Render
+Create a project and place both services inside it:
 
-Deployment pulls a specific version tag (`vX.Y.Z`) for deterministic runtime.
+* Postgres database
+* Web service
+
+### 2) Create Render Postgres
+
+* Plan: Free (for development/testing)
+* Region: same as the Web service
+* Copy the **Internal Database URL**
+
+### 3) Create Render Web Service (Docker)
+
+* Deploy from Docker image:
+
+  * `<dockerhub-username>/events-api:latest`
+* Configure environment variables (Render → Environment):
+
+  * `DATABASE_URL` = Render **Internal Database URL**
+  * `SECRET_KEY` = random secure value
+  * `JWT_SECRET_KEY` = random secure value
+
+Render provides:
+
+* `PORT`
+* `WEB_CONCURRENCY`
+
+### 4) Create Deploy Hook
+
+In Render Web Service settings:
+
+* Create a deploy hook
+* Store it in GitHub secrets as `RENDER_DEPLOY_HOOK`
+
+---
+
+## Smoke test + DB persistence verification
+
+Smoke test (automated in CD):
+
+* `/api/health` must return 200
+* `/api/events` must return 200
+
+Persistence verification (manual proof performed):
+
+* create a user
+* login to obtain JWT
+* create an event
+* redeploy via deploy hook
+* confirm the event still exists after redeploy
+
+This confirms PostgreSQL is being used and data persists outside the container.
+
+---
+
